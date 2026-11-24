@@ -17,6 +17,11 @@
     {{ '任务排队中……' if job.status == 'queued' else '正在求解……' }}页面会自动刷新。
   </div>
   <meta http-equiv="refresh" content="2">
+{% elif job.status == 'void' %}
+  <div class="notice warn">
+    任务已作废：{{ job.message or '供数已被整批替换，该任务不再执行。' }}
+    迟到的求解结果不会生成清单；可在<a href="{{ url_for('main.solve_page') }}">新建求解</a>页按新供数重新发起。
+  </div>
 {% elif job.status == 'done' %}
   <div class="notice ok">
     求解完成：停用 {{ result_count }} 份凭证，
@@ -31,7 +36,15 @@
 
 <div class="card">
   <div class="kv">
-    <dt>状态</dt><dd>{{ job.status }}</dd>
+    <dt>状态</dt>
+    <dd>
+      {% if job.status == 'void' %}已作废
+      {% elif job.status == 'done' %}已完成
+      {% elif job.status == 'nosolution' %}无解
+      {% elif job.status == 'error' %}出错
+      {% elif job.status == 'running' %}求解中
+      {% else %}排队中{% endif %}
+    </dd>
     <dt>创建时间</dt><dd>{{ job.created_at }}</dd>
     <dt>开始时间</dt><dd>{{ job.started_at or '—' }}</dd>
     <dt>完成时间</dt><dd>{{ job.finished_at or '—' }}</dd>

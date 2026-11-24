@@ -49,6 +49,7 @@ class ImportResult:
     updated: int = 0
     total: int = 0
     mode: str = "merge"
+    voided_jobs: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -170,7 +171,24 @@ def import_credentials(
         conn.execute("DELETE FROM plan_items")
         conn.execute("DELETE FROM plans")
         conn.execute("DELETE FROM credentials")
-        result = ImportResult(inserted=len(rows), updated=0, total=len(rows), mode=mode)
+        # Every unfinished job belongs to the superseded feed: mark them void
+        # so a running/queued solve can never write a plan against the new
+        # feed, and a restart will not pick them up again.
+        cur = conn.execute(
+            "UPDATE solve_jobs SET status = 'void', "
+            "finished_at = datetime('now'), "
+            "message = '供数已被整批替换，该任务作废。' "
+            "WHERE status IN ('queued', 'running')"
+        )
+        voided_jobs = cur.rowcount
+        db_module.bump_feed_generation(conn)
+        result = ImportResult(
+            inserted=len(rows),
+            updated=0,
+            total=len(rows),
+            mode=mode,
+            voided_jobs=voided_jobs,
+        )
     else:
         new_vouchers = [r["voucher_no"] for r in rows if r["voucher_no"] not in existing]
         total_after = len(existing) + len(new_vouchers)
@@ -277,14 +295,25 @@ def enqueue_solve(
     conn: sqlite3.Connection,
     pair1: tuple[str, str],
     pair2: tuple[str, str] | None,
+    feed_generation: int | None = None,
 ) -> int:
     version = db_module.get_version(conn)
+    if feed_generation is None:
+        feed_generation = db_module.get_feed_generation(conn)
     cur = conn.execute(
         """
-        INSERT INTO solve_jobs(pair1_a, pair1_b, pair2_a, pair2_b, data_version)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO solve_jobs(pair1_a, pair1_b, pair2_a, pair2_b,
+                               data_version, feed_generation)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
-        (pair1[0], pair1[1], pair2[0] if pair2 else None, pair2[1] if pair2 else None, version),
+        (
+            pair1[0],
+            pair1[1],
+            pair2[0] if pair2 else None,
+            pair2[1] if pair2 else None,
+            version,
+            feed_generation,
+        ),
     )
     return int(cur.lastrowid)
 

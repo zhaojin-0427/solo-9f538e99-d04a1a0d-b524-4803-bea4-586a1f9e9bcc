@@ -23,12 +23,21 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
-from typing import Iterable, Sequence
+from typing import Callable, Iterable, Sequence
 
 # Cheap safety net for the recursive blocking-flow DFS.  The graph is at most
 # ~4000 vertices, so this is comfortably above the longest possible path.
 if sys.getrecursionlimit() < 100_000:
     sys.setrecursionlimit(100_000)
+
+
+class SolveCancelled(Exception):
+    """Raised when a running solve is aborted (e.g. the feed was replaced).
+
+    Cooperative cancellation: the worker passes a callback that returns True
+    once the job has been voided, and the solver checks it at every
+    coarse-grained loop so it stops promptly without holding any DB lock.
+    """
 
 
 @dataclass(frozen=True)
@@ -82,11 +91,14 @@ class _MaxFlow:
         self.cap.append(0)
         self.adj[v].append(i + 1)
 
-    def _bfs(self, s: int, t: int) -> list[int]:
+    def _bfs(
+        self, s: int, t: int, cancel_cb: Callable[[], bool] | None
+    ) -> list[int]:
         level = [-1] * self.n
         level[s] = 0
         queue = [s]
         head = 0
+        checks = 0
         while head < len(queue):
             v = queue[head]
             head += 1
@@ -96,6 +108,9 @@ class _MaxFlow:
                     if level[u] < 0:
                         level[u] = level[v] + 1
                         queue.append(u)
+            checks += 1
+            if cancel_cb is not None and (checks & 63) == 0 and cancel_cb():
+                raise SolveCancelled()
         return level
 
     def _dfs(self, v: int, t: int, pushed: int, level: list[int], it: list[int]) -> int:
@@ -114,13 +129,21 @@ class _MaxFlow:
             it[v] += 1
         return 0
 
-    def max_flow(self, s: int, t: int, limit: int | None = None) -> int:
+    def max_flow(
+        self,
+        s: int,
+        t: int,
+        limit: int | None = None,
+        cancel_cb: Callable[[], bool] | None = None,
+    ) -> int:
         if s == t:
             return 0
         bound = limit if limit is not None else 1 << 120
         flow = 0
         while flow < bound:
-            level = self._bfs(s, t)
+            if cancel_cb is not None and cancel_cb():
+                raise SolveCancelled()
+            level = self._bfs(s, t, cancel_cb)
             if level[t] < 0:
                 break
             it = [0] * self.n
@@ -158,6 +181,7 @@ def _cut_with_pins(
     source_terminals: Sequence[str],
     sink_terminals: Sequence[str],
     inf: int,
+    cancel_cb: Callable[[], bool] | None = None,
 ) -> tuple[int, list[Edge]] | None:
     """Minimum cut separating the pinned source terminals from the pinned sink
     terminals.  Returns None when every such cut must deactivate a locked
@@ -176,7 +200,7 @@ def _cut_with_pins(
     for terminal in sink_terminals:
         network.add_directed(index[terminal], sink, inf)
 
-    flow = network.max_flow(source, sink, limit=inf)
+    flow = network.max_flow(source, sink, limit=inf, cancel_cb=cancel_cb)
     if flow >= inf:
         return None
 
@@ -219,11 +243,14 @@ def solve(
     edges: Sequence[Edge],
     pair1: tuple[str, str],
     pair2: tuple[str, str] | None = None,
+    cancel_cb: Callable[[], bool] | None = None,
 ) -> SolveResult | None:
     """Return a minimum-total deactivation list, or None if impossible.
 
     ``edges`` must contain only currently effective (active) credentials.
-    Locked credentials are treated as undeactivatable.
+    Locked credentials are treated as undeactivatable.  When ``cancel_cb``
+    returns True, the in-flight computation raises :class:`SolveCancelled`
+    (before any result is returned or written anywhere).
     """
 
     edges = tuple(edges)
@@ -231,7 +258,9 @@ def solve(
 
     if pair2 is None:
         index = _node_index(edges, [*pair1])
-        found = _cut_with_pins(edges, index, [pair1[0]], [pair1[1]], inf)
+        found = _cut_with_pins(
+            edges, index, [pair1[0]], [pair1[1]], inf, cancel_cb
+        )
         if found is None:
             return None
         weight, chosen = found
@@ -241,7 +270,11 @@ def solve(
     index = _node_index(edges, [*pair1, *pair2])
     best: tuple[int, tuple[Edge, ...], int] | None = None
     for pattern_index, (source_terms, sink_terms) in enumerate(patterns):
-        found = _cut_with_pins(edges, index, source_terms, sink_terms, inf)
+        if cancel_cb is not None and cancel_cb():
+            raise SolveCancelled()
+        found = _cut_with_pins(
+            edges, index, source_terms, sink_terms, inf, cancel_cb
+        )
         if found is None:
             continue
         weight, chosen = found

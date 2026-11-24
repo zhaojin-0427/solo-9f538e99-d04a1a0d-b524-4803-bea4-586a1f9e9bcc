@@ -154,7 +154,19 @@ def import_csv():
         return redirect(url_for("main.index"))
 
     if mode == "replace":
-        flash(f"已替换供数：共 {result.total} 份凭证。", "ok")
+        # The replacement has committed (old jobs are void in the same
+        # transaction).  Tell the worker to abort an in-flight old solve so
+        # the new feed's jobs can take over immediately.  Cancellation is
+        # cooperative and never rolls the replacement back.
+        get_worker(current_app._get_current_object()).request_cancel()
+        if result.voided_jobs:
+            flash(
+                f"已替换供数：共 {result.total} 份凭证；"
+                f"旧批次 {result.voided_jobs} 个未完成求解任务已作废。",
+                "ok",
+            )
+        else:
+            flash(f"已替换供数：共 {result.total} 份凭证。", "ok")
     else:
         flash(
             f"导入完成：新增 {result.inserted} 份，更新 {result.updated} 份，"
@@ -327,14 +339,31 @@ def restore_credential(credential_id: int):
 def solve_page():
     conn = db_module.get_db()
     numbers = services.catalog_numbers(conn)
+    feed_generation = db_module.get_feed_generation(conn)
     return render_template(
-        "solve.html", **_template_context(numbers=numbers)
+        "solve.html",
+        **_template_context(numbers=numbers, feed_generation=feed_generation),
     )
 
 
 @bp.post("/solve")
 def solve_submit():
     conn = db_module.get_db()
+    # Stale-form guard: a form rendered before a "replace all" must not
+    # create a job against the new feed -- even when the catalogue numbers
+    # happen to be identical.  Merge imports and minute/lock corrections do
+    # not bump the generation, so they keep working with open forms.
+    try:
+        form_generation = int(request.form.get("feed_generation", ""))
+    except (TypeError, ValueError):
+        form_generation = -1
+    current_generation = db_module.get_feed_generation(conn)
+    if form_generation != current_generation:
+        flash(
+            "供数已被整批替换，本表单已过期；请刷新页面后再新建求解任务，未创建任何任务。",
+            "error",
+        )
+        return redirect(url_for("main.solve_page"))
     try:
         pair1 = services.normalize_pair(request.form.get("p1a", ""), request.form.get("p1b", ""))
         raw2 = [request.form.get("p2a", "").strip(), request.form.get("p2b", "").strip()]
@@ -345,7 +374,9 @@ def solve_submit():
             pair2 = services.normalize_pair(raw2[0], raw2[1])
         services.validate_pairs(conn, pair1, pair2)
         with db_module.transaction(conn):
-            job_id = services.enqueue_solve(conn, pair1, pair2)
+            job_id = services.enqueue_solve(
+                conn, pair1, pair2, feed_generation=current_generation
+            )
     except DomainError as exc:
         flash(str(exc), "error")
         return redirect(url_for("main.solve_page"))

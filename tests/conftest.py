@@ -14,6 +14,7 @@ from app.services import import_credentials  # noqa: E402
 from app.worker import get_worker  # noqa: E402
 
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
+FEED_GEN_RE = re.compile(r'name="feed_generation" value="([^"]+)"')
 
 
 @pytest.fixture()
@@ -70,7 +71,14 @@ def csrf(client, path="/"):
 
 
 def post(client, path, data=None, token_path="/"):
-    payload = {"csrf_token": csrf(client, token_path)}
+    token_page = client.get(token_path)
+    page_text = token_page.get_data(as_text=True)
+    match = CSRF_RE.search(page_text)
+    assert match, f"no CSRF token on {token_path}"
+    payload = {"csrf_token": match.group(1)}
+    feed_match = FEED_GEN_RE.search(page_text)
+    if feed_match is not None:
+        payload["feed_generation"] = feed_match.group(1)
     payload.update(data or {})
     return client.post(path, data=payload, follow_redirects=True)
 

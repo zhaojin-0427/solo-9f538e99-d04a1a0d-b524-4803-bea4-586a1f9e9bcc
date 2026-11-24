@@ -50,12 +50,14 @@ CREATE TABLE IF NOT EXISTS plan_items (
 CREATE TABLE IF NOT EXISTS solve_jobs (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     status          TEXT    NOT NULL DEFAULT 'queued'
-                    CHECK (status IN ('queued', 'running', 'done', 'nosolution', 'error')),
+                    CHECK (status IN ('queued', 'running', 'done', 'nosolution',
+                                      'error', 'void')),
     pair1_a         TEXT    NOT NULL,
     pair1_b         TEXT    NOT NULL,
     pair2_a         TEXT,
     pair2_b         TEXT,
     data_version    INTEGER NOT NULL,
+    feed_generation INTEGER NOT NULL DEFAULT 0,
     result_total    INTEGER,
     result_json     TEXT,
     message         TEXT,
@@ -73,3 +75,4 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 
 INSERT OR IGNORE INTO meta(key, value) VALUES ('data_version', '0');
+INSERT OR IGNORE INTO meta(key, value) VALUES ('feed_generation', '0');

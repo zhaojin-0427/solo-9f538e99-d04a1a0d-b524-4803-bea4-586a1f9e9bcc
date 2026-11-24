@@ -439,10 +439,10 @@ def test_edits_are_possible_while_solve_runs(client, app, worker, monkeypatch):
     release = threading.Event()
     real_solve = worker_module.solve
 
-    def slow_solve(edges, pair1, pair2=None):
+    def slow_solve(edges, pair1, pair2=None, cancel_cb=None):
         started.set()
         assert release.wait(5), "test did not release the solve"
-        return real_solve(edges, pair1, pair2)
+        return real_solve(edges, pair1, pair2, cancel_cb=cancel_cb)
 
     monkeypatch.setattr(worker_module, "solve", slow_solve)
 

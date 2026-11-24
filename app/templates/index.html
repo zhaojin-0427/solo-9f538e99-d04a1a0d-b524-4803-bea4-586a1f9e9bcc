@@ -43,7 +43,9 @@
     {% endif %}
   </div>
   <p class="muted small" style="margin-bottom: 0;">
-    校验失败时整批不写入，供数保持原样。替换模式下，历史清单会一并清除。
+    校验失败时整批不写入，供数保持原样。替换模式下，历史清单会一并清除，
+    旧批次未完成的求解任务立即作废（正在计算的中止、排队的不再执行、重启不复活），
+    且替换前打开的求解表单需刷新后才能再次提交。
   </p>
 </div>
 
@@ -66,6 +68,7 @@
           {% if job.status == 'done' %}<span class="tag tag-ok">已完成</span>
           {% elif job.status == 'nosolution' %}<span class="tag tag-bad">无解</span>
           {% elif job.status == 'error' %}<span class="tag tag-bad">出错</span>
+          {% elif job.status == 'void' %}<span class="tag tag-off">已作废</span>
           {% elif job.status == 'running' %}<span class="tag tag-draft">求解中</span>
           {% else %}<span class="tag">排队中</span>{% endif %}
         </td>

@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="pagehead">
+  <h1>联合目录同物凭证复核台</h1>
+  <p class="lede">
+    当联合目录把不同藏品并成一件时，编目员需要找出应当复核哪些同物凭证。
+    这里按凭证的预计复核工时，为选定的编号对给出总工时最少的停用清单，
+    并保证每一对编号都无法再经由有效凭证相连。
+  </p>
+</div>
+
+<div class="grid" style="margin-bottom: 18px;">
+  <div class="stat"><div class="n">{{ stats.active }}</div><div class="l">当前有效凭证</div></div>
+  <div class="stat"><div class="n">{{ stats.locked }}</div><div class="l">锁定（不可停用）</div></div>
+  <div class="stat"><div class="n">{{ stats.drafts }}</div><div class="l">待确认草稿清单</div></div>
+  <div class="stat"><div class="n">{{ stats.total }}</div><div class="l">供数凭证总数 / 上限 {{ max_credentials }}</div></div>
+</div>
+
+<div class="card">
+  <h2>导入凭证供数（CSV）</h2>
+  <p class="muted small">
+    表头：<code>voucher_no,catalog_a,catalog_b,minutes,locked</code>。
+    <code>minutes</code> 为 1～10000 的整数；<code>locked</code> 用 <code>0/1</code>
+    （锁定凭证不可停用）。同一对编号的多份凭证各自计入工时。
+    单个 CSV 最多 {{ max_credentials }} 份凭证。
+  </p>
+  <form method="post" action="{{ url_for('main.import_csv') }}" enctype="multipart/form-data" class="actions">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="file" name="csv_file" accept=".csv,text/csv" required>
+    <select name="mode" aria-label="导入方式">
+      <option value="merge">合并（同凭证号更新，其余保留）</option>
+      <option value="replace">替换全部供数</option>
+    </select>
+    <button type="submit">导入</button>
+  </form>
+  <div class="actions" style="margin-top: 12px;">
+    <a class="button secondary" href="{{ url_for('main.sample_csv') }}">下载示例 CSV</a>
+    {% if stats.total == 0 %}
+      <form method="post" action="{{ url_for('main.demo_data') }}" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="secondary">载入内置示例数据</button>
+      </form>
+    {% endif %}
+  </div>
+  <p class="muted small" style="margin-bottom: 0;">
+    校验失败时整批不写入，供数保持原样。替换模式下，历史清单会一并清除。
+  </p>
+</div>
+
+<div class="card">
+  <div class="toolbar">
+    <h2 style="margin: 0;">最近的求解任务</h2>
+    <a class="button" href="{{ url_for('main.solve_page') }}">新建求解</a>
+  </div>
+  {% if jobs %}
+  <table>
+    <thead>
+      <tr><th>#</th><th>编号对</th><th>状态</th><th class="num">工时</th><th>时间</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for job in jobs %}
+      <tr>
+        <td class="mono">{{ job.id }}</td>
+        <td class="mono">{{ job.pair1_a }} ↔ {{ job.pair1_b }}{% if job.pair2_a %}；{{ job.pair2_a }} ↔ {{ job.pair2_b }}{% endif %}</td>
+        <td>
+          {% if job.status == 'done' %}<span class="tag tag-ok">已完成</span>
+          {% elif job.status == 'nosolution' %}<span class="tag tag-bad">无解</span>
+          {% elif job.status == 'error' %}<span class="tag tag-bad">出错</span>
+          {% elif job.status == 'running' %}<span class="tag tag-draft">求解中</span>
+          {% else %}<span class="tag">排队中</span>{% endif %}
+        </td>
+        <td class="num">{{ job.result_total if job.result_total is not none else '—' }}</td>
+        <td class="small muted">{{ job.created_at }}</td>
+        <td><a href="{{ url_for('main.job_detail', job_id=job.id) }}">查看</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">还没有求解任务。导入供数后，选择一对或两对编号开始求解。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="toolbar">
+    <h2 style="margin: 0;">复核清单</h2>
+    <a class="button secondary" href="{{ url_for('main.plans') }}">全部清单</a>
+  </div>
+  {% if plans %}
+  <table>
+    <thead>
+      <tr><th>#</th><th>编号对</th><th>状态</th><th class="num">总工时</th><th>确认时间</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for plan in plans %}
+      <tr>
+        <td class="mono">{{ plan.id }}</td>
+        <td class="mono">{{ plan.pair1_a }} ↔ {{ plan.pair1_b }}{% if plan.pair2_a %}；{{ plan.pair2_a }} ↔ {{ plan.pair2_b }}{% endif %}</td>
+        <td>{% if plan.status == 'confirmed' %}<span class="tag tag-confirmed">已确认</span>{% else %}<span class="tag tag-draft">草稿</span>{% endif %}</td>
+        <td class="num">{{ plan.plan_total }}</td>
+        <td class="small muted">{{ plan.confirmed_at or '—' }}</td>
+        <td><a href="{{ url_for('main.plan_detail', plan_id=plan.id) }}">查看</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">还没有清单。求解完成后会在这里生成草稿清单，供确认前复核。</p>
+  {% endif %}
+</div>
+{% endblock %}

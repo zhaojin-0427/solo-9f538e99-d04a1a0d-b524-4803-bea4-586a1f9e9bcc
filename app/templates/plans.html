@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="pagehead">
+  <h1>复核清单</h1>
+  <p class="lede">
+    草稿清单来自求解结果，确认后才会把凭证从供数清单撤下。
+    只有当前仍然可行、且总工时仍为最少时，确认才会生效。
+  </p>
+</div>
+
+<div class="card">
+  <h2>待确认草稿</h2>
+  {% if drafts %}
+  <table>
+    <thead>
+      <tr><th>#</th><th>编号对</th><th class="num">求解时总工时</th><th>版本</th><th>创建时间</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for plan in drafts %}
+      <tr>
+        <td class="mono">{{ plan.id }}</td>
+        <td class="mono">{{ plan.pair1_a }} ↔ {{ plan.pair1_b }}{% if plan.pair2_a %}；{{ plan.pair2_a }} ↔ {{ plan.pair2_b }}{% endif %}</td>
+        <td class="num">{{ plan.plan_total }}</td>
+        <td class="mono small">{{ plan.solved_version }}</td>
+        <td class="small muted">{{ plan.created_at }}</td>
+        <td><a href="{{ url_for('main.plan_detail', plan_id=plan.id) }}">查看</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted small" style="margin-bottom: 0;">
+    同一编号对可能因供数更正而有多份草稿；每份都可打开确认，但确认时只按当前供数重新判定。
+  </p>
+  {% else %}
+  <p class="muted">暂无草稿。先<a href="{{ url_for('main.solve_page') }}">新建求解</a>。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>已确认清单</h2>
+  {% if confirmed %}
+  <table>
+    <thead>
+      <tr><th>#</th><th>编号对</th><th class="num">总工时</th><th>确认时间</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for plan in confirmed %}
+      <tr>
+        <td class="mono">{{ plan.id }}</td>
+        <td class="mono">{{ plan.pair1_a }} ↔ {{ plan.pair1_b }}{% if plan.pair2_a %}；{{ plan.pair2_a }} ↔ {{ plan.pair2_b }}{% endif %}</td>
+        <td class="num">{{ plan.plan_total }}</td>
+        <td class="small muted">{{ plan.confirmed_at }}</td>
+        <td><a href="{{ url_for('main.plan_detail', plan_id=plan.id) }}">查看</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">还没有已确认的清单。</p>
+  {% endif %}
+</div>
+{% endblock %}

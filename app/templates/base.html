@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}同物凭证复核台{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('main.index') }}">
+      <span class="brand-mark">◎</span>
+      同物凭证复核台
+    </a>
+    <nav>
+      <a href="{{ url_for('main.credentials') }}">凭证供数</a>
+      <a href="{{ url_for('main.solve_page') }}">新建求解</a>
+      <a href="{{ url_for('main.plans') }}">复核清单</a>
+      <a href="{{ url_for('main.help_page') }}">说明</a>
+    </nav>
+  </header>
+
+  <main>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flashes">
+          {% for category, message in messages %}
+            <div class="flash flash-{{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    有效凭证 {{ stats.active }} 份 · 其中锁定 {{ stats.locked }} 份 · 供数共 {{ stats.total }} 份
+    （上限 {{ max_credentials }} 份）
+  </footer>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

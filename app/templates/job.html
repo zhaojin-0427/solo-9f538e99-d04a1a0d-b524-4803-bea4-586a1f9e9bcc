@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}求解任务 #{{ job.id }}{% endblock %}
+{% block content %}
+<div class="pagehead toolbar">
+  <div>
+    <h1>求解任务 #{{ job.id }}</h1>
+    <p class="lede mono" style="margin: 0;">
+      {{ job.pair1_a }} ↔ {{ job.pair1_b }}
+      {% if job.pair2_a %}；{{ job.pair2_a }} ↔ {{ job.pair2_b }}{% endif %}
+    </p>
+  </div>
+  <a class="button secondary" href="{{ url_for('main.solve_page') }}">再建一个</a>
+</div>
+
+{% if job.status in ('queued', 'running') %}
+  <div class="notice info">
+    {{ '任务排队中……' if job.status == 'queued' else '正在求解……' }}页面会自动刷新。
+  </div>
+  <meta http-equiv="refresh" content="2">
+{% elif job.status == 'done' %}
+  <div class="notice ok">
+    求解完成：停用 {{ result_count }} 份凭证，
+    总复核工时 <strong>{{ job.result_total }}</strong> 分钟。
+    {% if plan %}<a href="{{ url_for('main.plan_detail', plan_id=plan.id) }}">查看草稿清单</a>{% endif %}
+  </div>
+{% elif job.status == 'nosolution' %}
+  <div class="notice bad">无解：{{ job.message }}供数清单未发生任何变化。</div>
+{% else %}
+  <div class="notice bad">{{ job.message or '求解失败。' }}供数清单未发生任何变化。</div>
+{% endif %}
+
+<div class="card">
+  <div class="kv">
+    <dt>状态</dt><dd>{{ job.status }}</dd>
+    <dt>创建时间</dt><dd>{{ job.created_at }}</dd>
+    <dt>开始时间</dt><dd>{{ job.started_at or '—' }}</dd>
+    <dt>完成时间</dt><dd>{{ job.finished_at or '—' }}</dd>
+    <dt>供数版本</dt><dd class="mono">{{ job.data_version }}</dd>
+  </div>
+</div>
+
+{% if job.status == 'done' and plan %}
+<div class="card">
+  <h2>草稿清单</h2>
+  <p class="muted small">
+    该清单尚未生效，需在清单页确认后才会把凭证从供数中撤下；
+    确认前会按最新的有效凭证、工时与锁定状态重新复查。
+  </p>
+  <div class="actions">
+    <a class="button" href="{{ url_for('main.plan_detail', plan_id=plan.id) }}">打开清单 #{{ plan.id }}</a>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

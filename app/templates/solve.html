@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="pagehead">
+  <h1>新建求解</h1>
+  <p class="lede">
+    选择一对或两对确认不同的藏品编号。求解器会计算总复核工时最少的停用清单，
+    使得每一对编号都无法再经由有效凭证相连。锁定凭证不会被停用。
+  </p>
+</div>
+
+<div class="card">
+  {% if not numbers %}
+    <div class="notice warn">供数中还没有凭证。请先在<a href="{{ url_for('main.index') }}">首页</a>导入 CSV。</div>
+  {% else %}
+  <form method="post" action="{{ url_for('main.solve_submit') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <h2>第一对</h2>
+    <div class="pairbox field">
+      <input type="text" name="p1a" list="catalog-numbers" required placeholder="编目号 A" autocomplete="off">
+      <span class="sep">↔</span>
+      <input type="text" name="p1b" list="catalog-numbers" required placeholder="编目号 B" autocomplete="off">
+    </div>
+
+    <h2>第二对（可选）</h2>
+    <div class="pairbox field">
+      <input type="text" name="p2a" list="catalog-numbers" placeholder="编目号 A" autocomplete="off">
+      <span class="sep">↔</span>
+      <input type="text" name="p2b" list="catalog-numbers" placeholder="编目号 B" autocomplete="off">
+    </div>
+    <p class="muted small">两对可以共用编目号或共用凭证；同一对编号的多份凭证分别计入工时。</p>
+
+    <datalist id="catalog-numbers">
+      {% for number in numbers %}<option value="{{ number }}">{% endfor %}
+    </datalist>
+
+    <div class="actions">
+      <button type="submit">开始求解</button>
+      <span class="muted small">最多 {{ max_credentials }} 份凭证，求解不枚举停用组合，通常瞬时完成。</span>
+    </div>
+  </form>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>求解规则</h2>
+  <ul class="muted small" style="margin: 0; padding-left: 20px;">
+    <li>仅使用当前有效凭证；已停用的凭证不会被列为复核对象。</li>
+    <li>锁定凭证不可停用。若所有可行清单都必须停用锁定凭证，则判定为无解。</li>
+    <li>求解期间仍可更正工时和锁定状态；确认时会按当时最新的有效凭证重新复查。</li>
+    <li>无解、确认被拒或写入失败时，供数清单保持原样。</li>
+  </ul>
+</div>
+{% endblock %}

@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}清单 #{{ plan.id }}{% endblock %}
+{% block content %}
+<div class="pagehead toolbar">
+  <div>
+    <h1>复核清单 #{{ plan.id }}</h1>
+    <p class="lede mono" style="margin: 0;">
+      {{ plan.pair1_a }} ↔ {{ plan.pair1_b }}
+      {% if plan.pair2_a %}；{{ plan.pair2_a }} ↔ {{ plan.pair2_b }}{% endif %}
+    </p>
+  </div>
+  <div>
+    {% if plan.status == 'confirmed' %}<span class="tag tag-confirmed">已确认</span>
+    {% else %}<span class="tag tag-draft">草稿</span>{% endif %}
+  </div>
+</div>
+
+{% if plan.status == 'confirmed' %}
+  <div class="notice ok">
+    已于 {{ plan.confirmed_at }} 确认，按确认时供数版本 {{ plan.confirmed_version }} 撤下
+    {{ items|length }} 份凭证，总复核工时 {{ plan.plan_total }} 分钟。
+  </div>
+{% else %}
+  {% if evaluation.can_confirm %}
+    <div class="notice ok">
+      复查通过：清单在当前有效凭证中仍可行，总工时 {{ evaluation.live_total }} 分钟，
+      等于当前最少值 {{ evaluation.optimum_total }} 分钟，可以确认。
+    </div>
+  {% else %}
+    <div class="notice bad">
+      暂不能确认，确认会被拒绝且供数保持原样：
+      <ul class="problems">
+        {% for problem in evaluation.problems %}<li>{{ problem }}</li>{% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+  {% if evaluation.stale %}
+    <div class="notice warn small">
+      供数在求解后已更正（求解版本 {{ plan.solved_version }}，当前版本 {{ evaluation.current_version }}）。
+      系统已按当前供数重新复查；若仍可行且总工时最少，仍可确认。
+    </div>
+  {% endif %}
+{% endif %}
+
+<div class="card">
+  <div class="toolbar">
+    <h2 style="margin: 0;">停用清单（{{ items|length }} 份）</h2>
+    <div class="totals">
+      清单总工时 <strong>{{ plan.plan_total if plan.status == 'confirmed' else evaluation.live_total }}</strong> 分钟
+      {% if evaluation.optimum_total is not none and evaluation.optimum_total != evaluation.live_total %}
+        <span class="muted small">/ 当前最少 {{ evaluation.optimum_total }} 分钟</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if items %}
+  <table>
+    <thead>
+      <tr><th>凭证号</th><th>编目号 A</th><th>编目号 B</th><th class="num">复核工时</th><th>当前状态</th></tr>
+    </thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td class="mono">{{ item.voucher_no }}</td>
+        <td class="mono">{{ item.catalog_a }}</td>
+        <td class="mono">{{ item.catalog_b }}</td>
+        <td class="num">
+          {% if item.now_minutes is not none and item.now_minutes != item.minutes %}
+            {{ item.now_minutes }} <span class="muted small">(求解时 {{ item.minutes }})</span>
+          {% else %}
+            {{ item.now_minutes if item.now_minutes is not none else item.minutes }}
+          {% endif %}
+        </td>
+        <td>
+          {% if item.now_active is none %}<span class="tag tag-bad">已移出供数</span>
+          {% elif not item.now_active %}<span class="tag tag-off">已停用</span>
+          {% elif item.now_locked %}<span class="tag tag-locked">锁定</span>
+          {% else %}<span class="tag tag-ok">有效</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">
+    当前有效凭证中，所选编号对已不相连，无需停用任何凭证。
+  </p>
+  {% endif %}
+
+  <div class="actions" style="margin-top: 16px;">
+    <a class="button secondary" href="{{ url_for('main.plan_items_csv', plan_id=plan.id) }}">导出 CSV</a>
+    <a class="button secondary" href="{{ url_for('main.plans') }}">返回清单列表</a>
+    {% if plan.status == 'draft' %}
+    <form method="post" action="{{ url_for('main.confirm', plan_id=plan.id) }}" class="inline"
+          onsubmit="return confirm('确认后会把这些凭证从供数清单撤下，确定继续？')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" {% if not evaluation.can_confirm %}disabled title="当前不满足确认条件"{% endif %}>确认并撤下凭证</button>
+    </form>
+    {% endif %}
+  </div>
+  {% if plan.status == 'draft' and not evaluation.can_confirm %}
+    <p class="muted small" style="margin-bottom: 0;">
+      按钮在复查通过前保持禁用；直接提交也会被服务端拒绝，供数不受影响。
+    </p>
+  {% endif %}
+</div>
+
+{% if plan.status == 'draft' and evaluation.optimum_total is not none and not evaluation.is_minimum %}
+<div class="card">
+  <h2>当前供数下的最少清单 <span class="muted small">（{{ evaluation.optimum_total }} 分钟，仅供人工核对）</span></h2>
+  <table>
+    <thead>
+      <tr><th>凭证号</th><th>编目号 A</th><th>编目号 B</th><th class="num">复核工时</th><th>本清单中</th></tr>
+    </thead>
+    <tbody>
+      {% for edge in evaluation.optimum_items %}
+      <tr>
+        <td class="mono">{{ edge.voucher_no }}</td>
+        <td class="mono">{{ edge.catalog_a }}</td>
+        <td class="mono">{{ edge.catalog_b }}</td>
+        <td class="num">{{ edge.minutes }}</td>
+        <td>{% if edge.credential_id in listed_ids %}<span class="tag tag-ok">是</span>{% else %}<span class="tag tag-off">否</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted small" style="margin-bottom: 0;">
+    可<a href="{{ url_for('main.solve_page') }}">按同一编号对重新求解</a>，生成新的草稿清单。
+  </p>
+</div>
+{% endif %}
+{% endblock %}
